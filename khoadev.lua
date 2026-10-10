@@ -335,11 +335,13 @@ local function getAllTargets()
                 local hrp = ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso") or ch:FindFirstChild("UpperTorso") or ch:FindFirstChildWhichIsA("BasePart")
                 if hrp then
                     seen[ch.Name] = true
+                    local pl = Players:FindFirstChild(ch.Name)
                     table.insert(targets, {
                         Name = ch.Name,
+                        DisplayName = (pl and pl.DisplayName) or ch.Name,
                         Character = ch,
                         RootPart = hrp,
-                        Player = Players:FindFirstChild(ch.Name)
+                        Player = pl
                     })
                 end
             end
@@ -352,7 +354,8 @@ local function getAllTargets()
             if hrp then
                 seen[p.Name] = true
                 table.insert(targets, {
-                    Name = p.DisplayName or p.Name,
+                    Name = p.Name,
+                    DisplayName = p.DisplayName or p.Name,
                     Character = p.Character,
                     RootPart = hrp,
                     Player = p
@@ -534,28 +537,80 @@ local function getAllTicketTargets()
     return list
 end
 
+local function clickGuiButton(btn)
+    if not btn or not (btn:IsA("GuiButton") or btn:IsA("TextButton") or btn:IsA("ImageButton")) then return end
+    
+    if firesignal then
+        pcall(function() firesignal(btn.MouseButton1Click) end)
+        pcall(function() firesignal(btn.MouseButton1Down) end)
+        pcall(function() firesignal(btn.MouseButton1Up) end)
+        pcall(function() firesignal(btn.Activated) end)
+    end
+
+    pcall(function()
+        local vim = game:GetService("VirtualInputManager")
+        local pos = btn.AbsolutePosition + (btn.AbsoluteSize / 2)
+        if pos.X > 0 and pos.Y > 0 then
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+            task.wait(0.02)
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+        end
+    end)
+
+    pcall(function()
+        local gs = game:GetService("GuiService")
+        local vim = game:GetService("VirtualInputManager")
+        local old = gs.SelectedObject
+        gs.SelectedObject = btn
+        vim:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+        task.wait(0.02)
+        vim:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+        gs.SelectedObject = old
+    end)
+end
+
 local function triggerRespawnButton()
     pcall(function()
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if pg and pg:FindFirstChild("Game") and pg.Game:FindFirstChild("Respawn") then
-            for _, desc in ipairs(pg.Game.Respawn:GetDescendants()) do
-                if desc:IsA("TextButton") or desc:IsA("ImageButton") then
-                    if firesignal then
-                        pcall(function() firesignal(desc.MouseButton1Click) end)
-                        pcall(function() firesignal(desc.Activated) end)
+        if pg then
+            local gameGui = pg:FindFirstChild("Game")
+            if gameGui and gameGui:FindFirstChild("Respawn") then
+                for _, desc in ipairs(gameGui.Respawn:GetDescendants()) do
+                    if desc:IsA("GuiButton") then
+                        clickGuiButton(desc)
                     end
+                end
+            end
+            for _, desc in ipairs(pg:GetDescendants()) do
+                if desc:IsA("GuiButton") and (desc.Name:lower():find("respawn") or desc.Name:lower():find("death")) then
+                    clickGuiButton(desc)
                 end
             end
         end
     end)
     setPlayerMode(true)
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Events") then
+            if ReplicatedStorage.Events:FindFirstChild("SetPlayerMode") then
+                for i = 1, 3 do
+                    ReplicatedStorage.Events.SetPlayerMode:FireServer(true)
+                    ReplicatedStorage.Events.SetPlayerMode:FireServer(false)
+                    ReplicatedStorage.Events.SetPlayerMode:FireServer()
+                    ReplicatedStorage.Events.SetPlayerMode:FireServer(1)
+                end
+            end
+            if ReplicatedStorage.Events:FindFirstChild("GameUISetType") then
+                ReplicatedStorage.Events.GameUISetType:FireServer("Respawn")
+            end
+        end
+    end)
 end
 
 -- ====================================================================
 -- GIAO DIỆN CHÍNH (KHOA DEV HUB)
 -- ====================================================================
 local Window = getgenv().WindUI:CreateWindow({
-    Title = "🌟 Khoa Dev Hub 🌟",
+    Title = "🌟 Khoa Dev Hub 22222🌟",
     Icon = "gamepad",
     Author = "Khoa Dev",
     IconThemed = true,
@@ -564,7 +619,7 @@ local Window = getgenv().WindUI:CreateWindow({
     Transparent = false,
 })
 
-local InfoTab = Window:Tab({Title = "🎄 Thông Tin", Icon = "message-circle"})
+local InfoTab = Window:Tab({Title = "🎄 Thông Tin 22", Icon = "message-circle"})
 local PlayerTab = Window:Tab({Title = "👤 Người Chơi", Icon = "user"})
 local AutoTab = Window:Tab({Title = "⚡ Tự Động", Icon = "zap"})
 local FPSTab = Window:Tab({Title = "🖥️ Tối Ưu FPS", Icon = "monitor"})
@@ -1157,41 +1212,75 @@ PlayerTab:Input({
 -- ====================================================================
 -- TAB 3: TỰ ĐỘNG (AUTO)
 -- ====================================================================
-getgenv().AutoCarryConnection = nil
-
 local function tryCarry(target)
+    if not target then return end
+    local username = (target.Player and target.Player.Name) or (target.Character and target.Character.Name) or target.Name
+    local charModel = target.Character
     local remote = getInteractRemote()
+
     if remote then
-        pcall(function() remote:FireServer("Carry", nil, target.Name) end)
-        pcall(function() remote:FireServer("Carry", target.Name) end)
-        pcall(function() remote:FireServer("Carry", true, target.Name) end)
+        pcall(function() remote:FireServer("Carry", nil, username) end)
+        pcall(function() remote:FireServer("Carry", true, username) end)
+        pcall(function() remote:FireServer("Carry", false, username) end)
+        pcall(function() remote:FireServer("Carry", username) end)
+        if charModel then
+            pcall(function() remote:FireServer("Carry", nil, charModel) end)
+            pcall(function() remote:FireServer("Carry", true, charModel) end)
+            pcall(function() remote:FireServer("Carry", charModel) end)
+            pcall(function() remote:FireServer(charModel) end)
+        end
+        if target.Player then
+            pcall(function() remote:FireServer("Carry", nil, target.Player) end)
+            pcall(function() remote:FireServer("Carry", target.Player) end)
+        end
     end
-    if target.Character then
-        for _, p in ipairs(target.Character:GetDescendants()) do
-            if p:IsA("ProximityPrompt") and p.ActionText:lower():find("carry") then
-                pcall(function() if fireproximityprompt then fireproximityprompt(p) end end)
+
+    if charModel then
+        for _, p in ipairs(charModel:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then
+                pcall(function()
+                    if fireproximityprompt then
+                        fireproximityprompt(p, 0)
+                        fireproximityprompt(p)
+                    end
+                    p:InputHoldBegin()
+                    task.delay(0.04, function() pcall(function() p:InputHoldEnd() end) end)
+                end)
             end
         end
     end
+
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Services") and ReplicatedStorage.Services:FindFirstChild("Asset") and ReplicatedStorage.Services.Asset:FindFirstChild("InteractionService") and ReplicatedStorage.Services.Asset.InteractionService:FindFirstChild("Event") then
+            ReplicatedStorage.Services.Asset.InteractionService.Event:Fire("Carry", charModel or username)
+        end
+        if ReplicatedStorage:FindFirstChild("Services") and ReplicatedStorage.Services:FindFirstChild("Client") and ReplicatedStorage.Services.Client:FindFirstChild("KeybindService") and ReplicatedStorage.Services.Client.KeybindService:FindFirstChild("SendKeybindEvent") then
+            ReplicatedStorage.Services.Client.KeybindService.SendKeybindEvent:Fire("Interact", true)
+        end
+    end)
 end
 
+local autoCarryRunning = false
 local function startAutoCarry()
-    if getgenv().AutoCarryConnection then return end
-    getgenv().AutoCarryConnection = RunService.Heartbeat:Connect(function()
-        if not getgenv().FeatureStates.AutoCarry then return end
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        for _, target in ipairs(getAllTargets()) do
-            if target.RootPart then
-                local dist = (hrp.Position - target.RootPart.Position).Magnitude
-                if dist <= 25 then
-                    tryCarry(target)
-                    task.wait(0.05)
+    if autoCarryRunning then return end
+    autoCarryRunning = true
+    task.spawn(function()
+        while getgenv().FeatureStates.AutoCarry do
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, target in ipairs(getAllTargets()) do
+                    if isTargetDowned(target) and target.RootPart then
+                        local dist = (hrp.Position - target.RootPart.Position).Magnitude
+                        if dist <= 28 then
+                            tryCarry(target)
+                        end
+                    end
                 end
             end
+            task.wait(0.1)
         end
+        autoCarryRunning = false
     end)
 end
 
@@ -1202,11 +1291,6 @@ AutoTab:Toggle({
         getgenv().FeatureStates.AutoCarry = state
         if state then
             startAutoCarry()
-        else
-            if getgenv().AutoCarryConnection then
-                getgenv().AutoCarryConnection:Disconnect()
-                getgenv().AutoCarryConnection = nil
-            end
         end
     end
 })
@@ -1214,39 +1298,83 @@ AutoTab:Toggle({
 AutoTab:Divider()
 
 local function tryRevive(target)
+    if not target then return end
+    local username = (target.Player and target.Player.Name) or (target.Character and target.Character.Name) or target.Name
+    local charModel = target.Character
     local remote = getInteractRemote()
+
     if remote then
-        pcall(function() remote:FireServer("Revive", true, target.Name) end)
-        pcall(function() remote:FireServer("Revive", target.Name) end)
+        pcall(function() remote:FireServer("Revive", true, username) end)
+        pcall(function() remote:FireServer("Revive", false, username) end)
+        pcall(function() remote:FireServer("Revive", username) end)
+        if charModel then
+            pcall(function() remote:FireServer("Revive", true, charModel) end)
+            pcall(function() remote:FireServer("Revive", false, charModel) end)
+            pcall(function() remote:FireServer("Revive", charModel) end)
+            pcall(function() remote:FireServer(charModel) end)
+        end
+        if target.Player then
+            pcall(function() remote:FireServer("Revive", true, target.Player) end)
+            pcall(function() remote:FireServer("Revive", target.Player) end)
+        end
+        pcall(function() remote:FireServer(username) end)
     end
-    if target.Character then
-        for _, p in ipairs(target.Character:GetDescendants()) do
-            if p:IsA("ProximityPrompt") and p.ActionText:lower():find("revive") then
-                pcall(function() if fireproximityprompt then fireproximityprompt(p) end end)
+
+    if charModel then
+        for _, p in ipairs(charModel:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then
+                pcall(function()
+                    if fireproximityprompt then
+                        fireproximityprompt(p, 0)
+                        fireproximityprompt(p)
+                    end
+                    p:InputHoldBegin()
+                    task.delay(0.04, function() pcall(function() p:InputHoldEnd() end) end)
+                end)
             end
         end
     end
+
+    pcall(function()
+        local vim = game:GetService("VirtualInputManager")
+        vim:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.delay(0.04, function()
+            pcall(function() vim:SendKeyEvent(false, Enum.KeyCode.E, false, game) end)
+        end)
+    end)
+
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Services") and ReplicatedStorage.Services:FindFirstChild("Asset") and ReplicatedStorage.Services.Asset:FindFirstChild("InteractionService") and ReplicatedStorage.Services.Asset.InteractionService:FindFirstChild("Event") then
+            ReplicatedStorage.Services.Asset.InteractionService.Event:Fire("Revive", charModel or username)
+        end
+        if ReplicatedStorage:FindFirstChild("Services") and ReplicatedStorage.Services:FindFirstChild("Client") and ReplicatedStorage.Services.Client:FindFirstChild("KeybindService") and ReplicatedStorage.Services.Client.KeybindService:FindFirstChild("SendKeybindEvent") then
+            ReplicatedStorage.Services.Client.KeybindService.SendKeybindEvent:Fire("Interact", true)
+        end
+    end)
 end
 
-getgenv().InstantReviveConnection = nil
-
+local instantReviveRunning = false
 local function startInstantRevive()
-    if getgenv().InstantReviveConnection then return end
-    getgenv().InstantReviveConnection = RunService.Heartbeat:Connect(function()
-        if not getgenv().InstantReviveEnabled then return end
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        for _, target in ipairs(getAllTargets()) do
-            if isTargetDowned(target) and target.RootPart then
-                local dist = (hrp.Position - target.RootPart.Position).Magnitude
-                if dist <= 25 then
-                    tryRevive(target)
-                    task.wait(getgenv().FeatureStates.InstantReviveDelay or 0.15)
+    if instantReviveRunning then return end
+    instantReviveRunning = true
+    task.spawn(function()
+        while getgenv().InstantReviveEnabled do
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, target in ipairs(getAllTargets()) do
+                    if isTargetDowned(target) and target.RootPart then
+                        local dist = (hrp.Position - target.RootPart.Position).Magnitude
+                        if dist <= 30 then
+                            tryRevive(target)
+                        end
+                    end
                 end
             end
+            local delaySec = tonumber(getgenv().FeatureStates.InstantReviveDelay) or 0.15
+            task.wait(math.clamp(delaySec, 0.05, 1))
         end
+        instantReviveRunning = false
     end)
 end
 
@@ -1255,13 +1383,9 @@ AutoTab:Toggle({
     Value = false,
     Callback = function(state)
         getgenv().InstantReviveEnabled = state
+        getgenv().FeatureStates.InstantReviveEnabled = state
         if state then
             startInstantRevive()
-        else
-            if getgenv().InstantReviveConnection then
-                getgenv().InstantReviveConnection:Disconnect()
-                getgenv().InstantReviveConnection = nil
-            end
         end
     end
 })
@@ -1286,41 +1410,74 @@ local function performSelfRevive()
 
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     if hrp then
-        lastSavedPosition = hrp.Position
+        lastSavedPosition = hrp.CFrame
     end
 
     local remote = getInteractRemote()
     if remote then
         pcall(function() remote:FireServer("Revive", true, LocalPlayer.Name) end)
+        pcall(function() remote:FireServer("Revive", false, LocalPlayer.Name) end)
         pcall(function() remote:FireServer("Revive", LocalPlayer.Name) end)
+        if char then
+            pcall(function() remote:FireServer("Revive", true, char) end)
+            pcall(function() remote:FireServer("Revive", char) end)
+            pcall(function() remote:FireServer(char) end)
+        end
     end
 
-    task.wait(0.5)
+    if char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("ProximityPrompt") then
+                pcall(function()
+                    if fireproximityprompt then
+                        fireproximityprompt(p, 0)
+                        fireproximityprompt(p)
+                    end
+                    p:InputHoldBegin()
+                    task.delay(0.04, function() pcall(function() p:InputHoldEnd() end) end)
+                end)
+            end
+        end
+    end
+
     triggerRespawnButton()
 
-    if getgenv().FeatureStates.SelfReviveMethod == "Fake Revive" and lastSavedPosition then
-        task.spawn(function()
+    task.spawn(function()
+        task.wait(0.3)
+        if isLocalPlayerDowned() then
+            pcall(function()
+                if hum then
+                    hum.Health = 0
+                    hum:ChangeState(Enum.HumanoidStateType.Dead)
+                end
+                if char then char:BreakJoints() end
+            end)
+            for i = 1, 15 do
+                triggerRespawnButton()
+                task.wait(0.15)
+                if not isLocalPlayerDowned() then break end
+            end
+        end
+
+        if getgenv().FeatureStates.SelfReviveMethod == "Fake Revive" and lastSavedPosition then
             local attempts = 0
-            while attempts < 30 do
+            while attempts < 40 do
                 task.wait(0.1)
                 attempts = attempts + 1
                 local newChar = LocalPlayer.Character
                 local newHRP = newChar and newChar:FindFirstChild("HumanoidRootPart")
                 if newHRP and not isLocalPlayerDowned() then
-                    newHRP.CFrame = CFrame.new(lastSavedPosition + Vector3.new(0, 2, 0))
+                    newHRP.CFrame = lastSavedPosition + Vector3.new(0, 3, 0)
                     break
                 end
             end
-            lastSavedPosition = nil
-            isRevivingSelf = false
-        end)
-    else
-        task.delay(2, function()
-            isRevivingSelf = false
-            lastSavedPosition = nil
-        end)
-    end
+        end
+
+        lastSavedPosition = nil
+        isRevivingSelf = false
+    end)
 end
 
 task.spawn(function()
@@ -1713,13 +1870,25 @@ EspTab:Toggle({
     end
 })
 
-getgenv().tracerLines = {}
+getgenv().tracerLines = getgenv().tracerLines or {}
+getgenv().tracerBeams = getgenv().tracerBeams or {}
+getgenv().tracerHighlights = getgenv().tracerHighlights or {}
 
 local function cleanupTracers()
     for _, l in pairs(getgenv().tracerLines) do
         pcall(function() l:Remove() end)
     end
     getgenv().tracerLines = {}
+
+    for _, b in pairs(getgenv().tracerBeams) do
+        pcall(function() b:Destroy() end)
+    end
+    getgenv().tracerBeams = {}
+
+    for _, h in pairs(getgenv().tracerHighlights) do
+        pcall(function() h:Destroy() end)
+    end
+    getgenv().tracerHighlights = {}
 end
 
 EspTab:Toggle({
@@ -1739,15 +1908,15 @@ task.spawn(function()
         if getgenv().FeatureStates.EspPlayer and myRoot then
             for _, t in ipairs(getAllTargets()) do
                 if t.RootPart then
-                    local esp = getgenv().espObjects[t.RootPart] or createESP(t.RootPart, t.Name, Color3.fromRGB(100, 255, 100))
+                    local esp = getgenv().espObjects[t.RootPart] or createESP(t.RootPart, t.DisplayName or t.Name, Color3.fromRGB(100, 255, 100))
                     if esp and esp.label then
                         local dist = math.floor((myRoot.Position - t.RootPart.Position).Magnitude)
                         local downed = isTargetDowned(t)
                         if downed then
-                            esp.label.Text = string.format("[ĐÃ GỤC] %s\n%d mét", t.Name, dist)
+                            esp.label.Text = string.format("[ĐÃ GỤC] %s\n%d mét", t.DisplayName or t.Name, dist)
                             esp.label.TextColor3 = Color3.fromRGB(255, 50, 50)
                         else
-                            esp.label.Text = string.format("%s\n%d mét", t.Name, dist)
+                            esp.label.Text = string.format("%s\n%d mét", t.DisplayName or t.Name, dist)
                             esp.label.TextColor3 = Color3.fromRGB(100, 255, 100)
                         end
                     end
@@ -1786,21 +1955,119 @@ task.spawn(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-    if getgenv().FeatureStates.TracerDowned and Camera and Drawing then
-        cleanupTracers()
+    if getgenv().FeatureStates.TracerDowned then
+        local myChar = LocalPlayer.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then
+            cleanupTracers()
+            return
+        end
+
+        local myOriginAtt = myRoot:FindFirstChild("KhoaDevTracerOrigin")
+        if not myOriginAtt then
+            myOriginAtt = Instance.new("Attachment")
+            myOriginAtt.Name = "KhoaDevTracerOrigin"
+            myOriginAtt.Parent = myRoot
+        end
+
+        local activeDownedParts = {}
+
         for _, t in ipairs(getAllTargets()) do
             if isTargetDowned(t) and t.RootPart then
-                local pos, onScreen = Camera:WorldToViewportPoint(t.RootPart.Position)
-                if onScreen then
-                    local line = Drawing.new("Line")
-                    line.Color = Color3.fromRGB(255, 40, 40)
-                    line.Thickness = 2
-                    line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                    line.To = Vector2.new(pos.X, pos.Y)
-                    line.Visible = true
-                    table.insert(getgenv().tracerLines, line)
+                activeDownedParts[t.RootPart] = true
+
+                -- 1. Dual-engine 3D Beam Tracer (100% tương thích mọi executor)
+                local targetAtt = t.RootPart:FindFirstChild("KhoaDevDownedAtt")
+                if not targetAtt then
+                    targetAtt = Instance.new("Attachment")
+                    targetAtt.Name = "KhoaDevDownedAtt"
+                    targetAtt.Parent = t.RootPart
+                end
+
+                local beam = getgenv().tracerBeams[t.RootPart]
+                if not beam or not beam.Parent then
+                    beam = Instance.new("Beam")
+                    beam.Name = "KhoaDevTracerBeam"
+                    beam.Color = ColorSequence.new(Color3.fromRGB(255, 35, 35))
+                    beam.Width0 = 0.25
+                    beam.Width1 = 0.25
+                    beam.FaceCamera = true
+                    beam.Segments = 1
+                    beam.LightEmission = 1
+                    beam.LightInfluence = 0
+                    beam.Transparency = NumberSequence.new(0)
+                    beam.Attachment0 = myOriginAtt
+                    beam.Attachment1 = targetAtt
+                    beam.Parent = myRoot
+                    getgenv().tracerBeams[t.RootPart] = beam
+                else
+                    beam.Attachment0 = myOriginAtt
+                    beam.Attachment1 = targetAtt
+                    beam.Enabled = true
+                end
+
+                -- 3D Highlight trên người đồng đội gục
+                if t.Character then
+                    local hl = getgenv().tracerHighlights[t.Character]
+                    if not hl or not hl.Parent then
+                        hl = Instance.new("Highlight")
+                        hl.Name = "KhoaDevDownedHL"
+                        hl.FillColor = Color3.fromRGB(255, 35, 35)
+                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        hl.FillTransparency = 0.35
+                        hl.OutlineTransparency = 0
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        hl.Adornee = t.Character
+                        hl.Parent = t.Character
+                        getgenv().tracerHighlights[t.Character] = hl
+                    else
+                        hl.Enabled = true
+                    end
+                end
+
+                -- 2. 2D Drawing Tracer (Dành cho executor hỗ trợ Drawing API)
+                if Camera and Drawing and Drawing.new then
+                    local pos, onScreen = Camera:WorldToViewportPoint(t.RootPart.Position)
+                    local line = getgenv().tracerLines[t.RootPart]
+                    if onScreen then
+                        if not line then
+                            pcall(function()
+                                line = Drawing.new("Line")
+                                line.Color = Color3.fromRGB(255, 40, 40)
+                                line.Thickness = 2
+                                line.Transparency = 1
+                                line.ZIndex = 999
+                                getgenv().tracerLines[t.RootPart] = line
+                            end)
+                        end
+                        if line then
+                            line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                            line.To = Vector2.new(pos.X, pos.Y)
+                            line.Visible = true
+                        end
+                    else
+                        if line then line.Visible = false end
+                    end
                 end
             end
+        end
+
+        -- Dọn dẹp những người không còn gục
+        for part, beam in pairs(getgenv().tracerBeams) do
+            if not activeDownedParts[part] then
+                pcall(function() beam:Destroy() end)
+                getgenv().tracerBeams[part] = nil
+            end
+        end
+        for part, line in pairs(getgenv().tracerLines) do
+            if not activeDownedParts[part] then
+                pcall(function() line:Remove() end)
+                getgenv().tracerLines[part] = nil
+            end
+        end
+    else
+        if next(getgenv().tracerBeams) or next(getgenv().tracerLines) or next(getgenv().tracerHighlights) then
+            cleanupTracers()
         end
     end
 end)
@@ -1885,14 +2152,47 @@ VisualTab:Toggle({
     end
 })
 
+getgenv().CustomFOV = 70
+getgenv().CustomFOVEnabled = false
+
+pcall(function()
+    RunService:BindToRenderStep("KhoaDevFOVOverride", Enum.RenderPriority.Camera.Value + 10, function()
+        if getgenv().CustomFOVEnabled and getgenv().CustomFOV then
+            local cam = workspace.CurrentCamera
+            if cam and cam.FieldOfView ~= getgenv().CustomFOV then
+                cam.FieldOfView = getgenv().CustomFOV
+            end
+        end
+    end)
+end)
+
+VisualTab:Toggle({
+    Title = "Bật Góc Nhìn Tùy Chỉnh (Custom FOV)",
+    Desc = "Khóa góc nhìn camera không bị game tự động đặt lại",
+    Value = false,
+    Callback = function(state)
+        getgenv().CustomFOVEnabled = state
+        if not state then
+            pcall(function()
+                if workspace.CurrentCamera then
+                    workspace.CurrentCamera.FieldOfView = 70
+                end
+            end)
+        end
+    end
+})
+
 VisualTab:Slider({
     Title = "Góc Nhìn Camera (Field of View)",
-    Desc = "Mở rộng hoặc thu nhỏ tầm nhìn",
-    Value = { Min = 30, Max = 120, Default = 70 },
+    Desc = "Mở rộng hoặc thu nhỏ tầm nhìn (30 - 140)",
+    Value = { Min = 30, Max = 140, Default = 70 },
     Callback = function(value)
         local num = tonumber(value)
         if num then
-            pcall(function() workspace.CurrentCamera.FieldOfView = num end)
+            getgenv().CustomFOV = num
+            if getgenv().CustomFOVEnabled and workspace.CurrentCamera then
+                pcall(function() workspace.CurrentCamera.FieldOfView = num end)
+            end
         end
     end
 })
@@ -2080,6 +2380,7 @@ game:GetService("Players").PlayerRemoving:Connect(function(leaving)
     if leaving == LocalPlayer then
         cleanupAllESP()
         cleanupTracers()
+        pcall(function() RunService:UnbindFromRenderStep("KhoaDevFOVOverride") end)
         if getgenv().bhopConnection then getgenv().bhopConnection:Disconnect() end
         if getgenv().infiniteSlideHeartbeat then getgenv().infiniteSlideHeartbeat:Disconnect() end
         if getgenv().AutoCarryConnection then getgenv().AutoCarryConnection:Disconnect() end
